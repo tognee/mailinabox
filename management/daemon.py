@@ -21,6 +21,7 @@ import auth, utils
 from mailconfig import get_mail_users, get_mail_users_ex, get_admins, add_mail_user, set_mail_password, remove_mail_user
 from mailconfig import get_mail_user_privileges, add_remove_mail_user_privilege
 from mailconfig import get_mail_aliases, get_mail_aliases_ex, get_mail_domains, add_mail_alias, remove_mail_alias
+from domains import get_domains, get_domains_ex, add_domain, remove_domain, get_domain_options, set_domain_option, encode_options as encode_domain_options
 from mfa import get_public_mfa_state, provision_totp, validate_totp_secret, enable_mfa, disable_mfa
 import contextlib
 
@@ -528,6 +529,41 @@ def web_get_domains():
 def web_update():
 	from web_update import do_web_update
 	return do_web_update(env)
+
+# Domains
+
+@app.route('/domains')
+@authorized_personnel_only
+def domains():
+	if request.args.get("format", "") == "json":
+		return json_response(get_domains_ex(env, with_archived=True))
+	else:
+		return "".join(x+"\n" for x in get_domains(env))
+
+@app.route('/domains/add', methods=['POST'])
+@authorized_personnel_only
+def domains_add():
+	try:
+		return add_domain(request.form.get('domain', ''), request.form.get('options', ''), env)
+	except ValueError as e:
+		return (str(e), 400)
+
+@app.route('/domains/remove', methods=['POST'])
+@authorized_personnel_only
+def domains_remove():
+	return remove_domain(request.form.get('domain', ''), env)
+
+@app.route('/domains/options')
+@authorized_personnel_only
+def domains_options():
+	options = get_domain_options(request.args.get('domain', ''), env)
+	if isinstance(options, tuple): return options # error
+	return encode_domain_options(options)
+
+@app.route('/domains/options/set', methods=['POST'])
+@authorized_personnel_only
+def domains_options_set():
+	return set_domain_option(request.form.get('domain', ''), request.form.get('option', ''), bool(int(request.form.get('value', '0'))), env)
 
 # System
 
