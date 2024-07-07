@@ -536,7 +536,7 @@ def web_update():
 @authorized_personnel_only
 def domains():
 	if request.args.get("format", "") == "json":
-		return json_response(get_domains_ex(env, with_archived=True))
+		return json_response(get_domains_ex(env))
 	else:
 		return "".join(x+"\n" for x in get_domains(env))
 
