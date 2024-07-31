@@ -17,7 +17,7 @@
     <tr>
       <th></th>
       <th>Domain</th>
-      <th>Disable web server</th>
+      <th>Enable web server</th>
     </tr>
   </thead>
   <tbody></tbody>
@@ -31,8 +31,19 @@
       "GET",
       { format: 'json' },
       function(r) {
-        $('#alias_table tbody').html("");
-        console.log(r);
+        $('#domain_table').html("<thead><tr><th>Domain</th><th>Enable web server</th><th></th></tr></thead><tbody></tbody>");
+        var tbody = $('#domain_table tbody');
+        for (var i = 0; i < r.length; i++) {
+          var row = r[i];
+          var tr = $("<tr data-domain='" + row.domain + "'></tr>");
+          tr.append("<td>" + row.domain + "</td>");
+          tr.append("<td class=\"web\"><input type='checkbox' " + (row.options.web ? "checked" : "") + " /></td>");
+          tr.append("<td><a href='#' onclick='do_remove_domain(this); return false;'>remove</a> | <a href='#' onclick='do_save_domain(this); return false;'>save</a></td>");
+          tbody.append(tr);
+        }
+      },
+      function(r) {
+        $('#domain_table').html("<thead><tr><th></th><th>Domain</th><th>Enable web server</th></tr></thead><tbody></tbody>");
       }
     );
   }
@@ -46,7 +57,8 @@
       "/domains/add",
       "POST",
       {
-        name: name
+        domain: name,
+        options: "web"
       },
       function(r) {
         show_modal_error("Add Domain", r);
@@ -63,7 +75,51 @@
   function domains_reset_form() {
     $('#domainName').val("");
   }
-
-  function domains_edit(elem){}
-  function domains_remove(elem){}
+  function do_remove_domain(elem) {
+    var domain = $(elem).parents('tr').attr('data-domain');
+    show_modal_confirm(
+      "Remove Domain",
+      "Remove " + domain + "?",
+      "Remove",
+      function() {
+        api(
+          "/domains/remove",
+          "POST",
+          {
+            domain: domain
+          },
+          function(r) {
+            show_modal_error("Remove Domain", r);
+            show_domains();
+          },
+          function(r) {
+            show_modal_error("Remove Domain", r);
+          }
+        );
+      });
+  }
+  function do_save_domain(elem) {
+    var domain = $(elem).parents('tr').attr('data-domain');
+    var web = $(elem).parents('tr').find('td.web input').prop('checked');
+    var options = "";
+    if (web) {
+      options += "web\n";
+    }
+    options = options.trim();
+    api(
+      "/domains/update",
+      "POST",
+      {
+        domain: domain,
+        options: options
+      },
+      function(r) {
+        show_modal_error("Update Domain", r);
+        show_domains();
+      },
+      function(r) {
+        show_modal_error("Update Domain", r);
+      }
+    );
+  }
 </script>
