@@ -98,6 +98,25 @@ def get_domain_options(domain, env):
         return ("That's not a domain (%s)." % domain, 400)
     return parse_options(rows[0][0])
 
+def update_domain(domain, options, env):
+    if options is None or options.strip() == "":
+        options = []
+    else:
+        options = options.split('\n')
+        for option in options:
+            if option not in POSSIBLE_OPTIONS:
+                return ("That's not a valid option (%s)." % option, 400)
+
+    conn, c = utils.open_database(env, with_connection=True)
+
+    c.execute("UPDATE domains SET options=? WHERE domain=?",
+              ('\n'.join(options), domain))
+    if c.rowcount != 1:
+        return ("Something went wrong.", 400)
+    conn.commit()
+
+    return kick(env, "OK")
+
 def set_domain_option(domain, option, value: bool, env):
     if option not in POSSIBLE_OPTIONS:
         return ("That's not a valid option (%s)." % option, 400)
