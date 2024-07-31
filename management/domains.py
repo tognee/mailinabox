@@ -1,6 +1,5 @@
 #!/usr/local/bin/mailinabox/env/bin/python
 
-from mailconfig import open_database
 import sqlite3, re
 import utils
 
@@ -17,7 +16,7 @@ def validate_domain(domain):
 
 def get_domains(env):
     # Returns a flat, sorted list of all domain names.
-    c = open_database(env)
+    c = utils.open_database(env)
     c.execute('SELECT domain FROM domains')
     domains = [ row[0] for row in c.fetchall() ]
     return utils.sort_domains(domains, env)
@@ -25,7 +24,7 @@ def get_domains(env):
 def get_domains_ex(env):
     # Returns a list of domains with their options.
     domains = []
-    c = open_database(env)
+    c = utils.open_database(env)
     c.execute('SELECT domain, options FROM domains')
     for domain, options in c.fetchall():
         domains.append({
@@ -62,7 +61,7 @@ def add_domain(domain, options, env):
                 return ("That's not a valid option (%s)." % option, 400)
     
     # get the database
-    conn, c = open_database(env, with_connection=True)
+    conn, c = utils.open_database(env, with_connection=True)
 
     # add the domain to the database
     try:
@@ -76,7 +75,7 @@ def add_domain(domain, options, env):
 
 def remove_domain(domain, env):
     # get the database
-    conn, c = open_database(env, with_connection=True)
+    conn, c = utils.open_database(env, with_connection=True)
 
     # remove
     c.execute("DELETE FROM domains WHERE domain=?", (domain,))
@@ -87,7 +86,7 @@ def remove_domain(domain, env):
     return None
 
 def get_domain_options(domain, env):
-    c = open_database(env)
+    c = utils.open_database(env)
     c.execute('SELECT options FROM domains WHERE domain=?', (domain,))
     rows = c.fetchall()
     if len(rows) != 1:
@@ -104,7 +103,7 @@ def set_domain_option(domain, option, value: bool, env):
     opts[option] = value
 
     # commit to database
-    conn, c = open_database(env, with_connection=True)
+    conn, c = utils.open_database(env, with_connection=True)
     c.execute("UPDATE domains SET options=? WHERE domain=?",
               (encode_options(opts), domain))
     if c.rowcount != 1:
