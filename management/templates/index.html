@@ -122,6 +122,7 @@
                 <li><a href="#munin">Munin Monitoring</a></li>
               </ul>
             </li>
+            <li><a href="#domains" class="if-logged-in-admin">Domains</a></li>
             <li><a href="#mail-guide" class="if-logged-in-not-admin">Mail</a></li>
             <li class="dropdown if-logged-in-admin">
               <a href="#" class="dropdown-toggle" data-toggle="dropdown">Mail &amp; Users <b class="caret"></b></a>
@@ -171,6 +172,10 @@
 
       <div id="panel_login" class="admin_panel">
       {% include "login.html" %}
+      </div>
+
+      <div id="panel_domains" class="admin_panel">
+      {% include "domains.html" %}
       </div>
 
       <div id="panel_mail-guide" class="admin_panel">

@@ -1,0 +1,69 @@
+<h2>Domains</h2>
+
+<h3>Add a domain</h3>
+
+<form id="domain-form" class="form-inline" role="form" onsubmit="do_add_domain(); return false;">
+  <div class="form-group">
+    <label for="domainName" class="control-label">Domain</label>
+    <input type="text" class="form-control" id="domainName" placeholder="example.com" />
+  </div>
+  <button type="submit" class="btn btn-primary">Add</button>
+</form>
+
+<h3>Existing domains</h3>
+
+<table id="domain_table" class="table" style="width: auto">
+  <thead>
+    <tr>
+      <th></th>
+      <th>Domain</th>
+      <th>Disable web server</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+  function show_domains() {
+    $('#domain_table').html("<tr><td colspan='2' class='text-muted'>Loading...</td></tr>");
+    api(
+      "/domains",
+      "GET",
+      { format: 'json' },
+      function(r) {
+        $('#alias_table tbody').html("");
+        console.log(r);
+      }
+    );
+  }
+
+  function do_add_domain() {
+    var name = $('#domainName').val();
+    if (name == "") {
+      return;
+    }
+    api(
+      "/domains/add",
+      "POST",
+      {
+        name: name
+      },
+      function(r) {
+        show_modal_error("Add Domain", r);
+        show_domains();
+        domains_reset_form();
+      },
+      function(r) {
+        show_modal_error("Add Domain", r);
+      }
+    );
+    return false;
+  }
+
+  function domains_reset_form() {
+    $('#domainName').val("");
+  }
+
+  function domains_edit(elem){}
+  function domains_remove(elem){}
+</script>
