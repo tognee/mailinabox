@@ -5,6 +5,7 @@
 import os.path, re, rtyaml
 
 from mailconfig import get_mail_domains
+from domains import get_domains_ex
 from dns_update import get_custom_dns_config, get_dns_zones
 from ssl_certificates import get_ssl_certificates, get_domain_ssl_files, check_certificate
 from utils import shell, safe_domain_name, sort_domains
@@ -38,6 +39,15 @@ def get_web_domains(env, include_www_redirects=True, include_auto=True, exclude_
 		# ...Unless the domain has an A/AAAA record that maps it to a different
 		# IP address than this box. Remove those domains from our list.
 		domains -= get_domains_with_a_records(env)
+	
+	domains_ex = get_domains_ex(env)
+	domains_to_remove = set()
+	for domain in domains_ex:
+		if not domain["options"]["web"]:
+			domains_to_remove.add(domain["domain"])
+			domains_to_remove.add('www.' + domain["domain"])
+
+	domains -= domains_to_remove
 
 	# Ensure the PRIMARY_HOSTNAME is in the list so we can serve webmail
 	# as well as Z-Push for Exchange ActiveSync. This can't be removed
