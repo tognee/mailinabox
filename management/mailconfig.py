@@ -299,14 +299,14 @@ def add_mail_user(email, pw, privs, env):
 	except sqlite3.IntegrityError:
 		return ("User already exists.", 400)
 
+	# write databasebefore next step
+	conn.commit()
+
 	# add domain to db if doesn't exist
 	domain = get_domain(email)
 	if domain not in get_domains(env):
 		# Enable web server by default
 		add_domain(domain, "web", env)
-
-	# write databasebefore next step
-	conn.commit()
 
 	# Update things in case any new domains are added.
 	return kick(env, "mail user added")
