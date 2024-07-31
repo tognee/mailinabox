@@ -77,6 +77,11 @@ def remove_domain(domain, env):
     # get the database
     conn, c = utils.open_database(env, with_connection=True)
 
+    # check that there are no emails using this domain
+    c.execute("SELECT COUNT(*) FROM users WHERE email LIKE ?", ('%@' + domain,))
+    if c.fetchone()[0] > 0:
+        return ("That domain is in use.", 400)
+
     # remove
     c.execute("DELETE FROM domains WHERE domain=?", (domain,))
     if c.rowcount != 1:

@@ -13,6 +13,7 @@ import os, sqlite3, re
 import utils
 from email_validator import validate_email as validate_email_, EmailNotValidError
 import idna
+from domains import add_domain, remove_domain, get_domains
 
 def validate_email(email, mode=None):
 	# Checks that an email address is syntactically valid. Returns True/False.
@@ -298,6 +299,12 @@ def add_mail_user(email, pw, privs, env):
 	except sqlite3.IntegrityError:
 		return ("User already exists.", 400)
 
+	# add domain to db if doesn't exist
+	domain = get_domain(email)
+	if domain not in get_domains(env):
+		# Enable web server by default
+		add_domain(domain, "web", env)
+
 	# write databasebefore next step
 	conn.commit()
 
@@ -344,6 +351,12 @@ def remove_mail_user(email, env):
 	if c.rowcount != 1:
 		return ("That's not a user (%s)." % email, 400)
 	conn.commit()
+
+	# remove domain from db if there are no more users
+	# for that domain
+	domain = get_domain(email)
+	if domain not in get_mail_domains(env, users_only=True):
+		remove_domain(domain, env)
 
 	# Update things in case any domains are removed.
 	return kick(env, "mail user removed")
