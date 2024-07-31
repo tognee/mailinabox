@@ -71,7 +71,7 @@ def add_domain(domain, options, env):
         return ("Domain already exists.", 400)
 
     conn.commit()
-    return None
+    return kick(env)
 
 def remove_domain(domain, env):
     # get the database
@@ -88,7 +88,7 @@ def remove_domain(domain, env):
         return ("That's not a domain (%s)." % domain, 400)
     conn.commit()
 
-    return None
+    return kick(env)
 
 def get_domain_options(domain, env):
     c = utils.open_database(env)
@@ -115,4 +115,19 @@ def set_domain_option(domain, option, value: bool, env):
         return ("Something went wrong.", 400)
     conn.commit()
 
-    return "OK"
+    return kick(env, "OK")
+
+def kick(env, action_result=None):
+    # Update DNS and nginx in case any domains are added/removed.
+    results = []
+
+    if action_result is not None:
+        results.append(action_result + "\n")
+
+    from dns_update import do_dns_update
+    results.append( do_dns_update(env) )
+
+    from web_update import do_web_update
+    results.append( do_web_update(env) )
+
+    return "".join(s for s in results if s != "")
