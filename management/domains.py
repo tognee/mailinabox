@@ -9,7 +9,7 @@ import utils
 # In the database, true
 # Not in the database, false
 POSSIBLE_OPTIONS = [
-    "no-web", # Not serving web and not checking A/AAAA records
+    "web", # Serving web and checking A/AAAA records
 ]
 
 def validate_domain(domain):
