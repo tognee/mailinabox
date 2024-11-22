@@ -13,6 +13,7 @@ import os, sqlite3, re
 import utils
 from email_validator import validate_email as validate_email_, EmailNotValidError
 import idna
+from domains import add_domain, remove_domain, get_domains
 
 def validate_email(email, mode=None):
 	# Checks that an email address is syntactically valid. Returns True/False.
@@ -88,16 +89,9 @@ def is_dcv_address(email):
 	email = email.lower()
 	return any(email.startswith((localpart + "@", localpart + "+")) for localpart in ("admin", "administrator", "postmaster", "hostmaster", "webmaster", "abuse"))
 
-def open_database(env, with_connection=False):
-	conn = sqlite3.connect(env["STORAGE_ROOT"] + "/mail/users.sqlite")
-	if not with_connection:
-		return conn.cursor()
-	else:
-		return conn, conn.cursor()
-
 def get_mail_users(env):
 	# Returns a flat, sorted list of all user accounts.
-	c = open_database(env)
+	c = utils.open_database(env)
 	c.execute('SELECT email FROM users')
 	users = [ row[0] for row in c.fetchall() ]
 	return utils.sort_email_addresses(users, env)
@@ -124,7 +118,7 @@ def get_mail_users_ex(env, with_archived=False):
 	# Get users and their privileges.
 	users = []
 	active_accounts = set()
-	c = open_database(env)
+	c = utils.open_database(env)
 	c.execute('SELECT email, privileges FROM users')
 	for email, privileges in c.fetchall():
 		active_accounts.add(email)
@@ -184,7 +178,7 @@ def get_admins(env):
 
 def get_mail_aliases(env):
 	# Returns a sorted list of tuples of (address, forward-tos, permitted-senders, auto).
-	c = open_database(env)
+	c = utils.open_database(env)
 	c.execute('SELECT source, destination, permitted_senders, 0 as auto FROM aliases UNION SELECT source, destination, permitted_senders, 1 as auto FROM auto_aliases')
 	aliases = { row[0]: row for row in c.fetchall() } # make dict
 
@@ -293,7 +287,7 @@ def add_mail_user(email, pw, privs, env):
 			if validation: return validation
 
 	# get the database
-	conn, c = open_database(env, with_connection=True)
+	conn, c = utils.open_database(env, with_connection=True)
 
 	# hash the password
 	pw = hash_password(pw)
@@ -308,6 +302,12 @@ def add_mail_user(email, pw, privs, env):
 	# write databasebefore next step
 	conn.commit()
 
+	# add domain to db if doesn't exist
+	domain = get_domain(email)
+	if domain not in get_domains(env):
+		# Enable web server by default
+		add_domain(domain, "web", env)
+
 	# Update things in case any new domains are added.
 	return kick(env, "mail user added")
 
@@ -319,7 +319,7 @@ def set_mail_password(email, pw, env):
 	pw = hash_password(pw)
 
 	# update the database
-	conn, c = open_database(env, with_connection=True)
+	conn, c = utils.open_database(env, with_connection=True)
 	c.execute("UPDATE users SET password=? WHERE email=?", (pw, email))
 	if c.rowcount != 1:
 		return ("That's not a user (%s)." % email, 400)
@@ -337,7 +337,7 @@ def get_mail_password(email, env):
 	# password format, with a prefixed scheme.
 	# http://wiki2.dovecot.org/Authentication/PasswordSchemes
 	# update the database
-	c = open_database(env)
+	c = utils.open_database(env)
 	c.execute('SELECT password FROM users WHERE email=?', (email,))
 	rows = c.fetchall()
 	if len(rows) != 1:
@@ -346,11 +346,17 @@ def get_mail_password(email, env):
 
 def remove_mail_user(email, env):
 	# remove
-	conn, c = open_database(env, with_connection=True)
+	conn, c = utils.open_database(env, with_connection=True)
 	c.execute("DELETE FROM users WHERE email=?", (email,))
 	if c.rowcount != 1:
 		return ("That's not a user (%s)." % email, 400)
 	conn.commit()
+
+	# remove domain from db if there are no more users
+	# for that domain
+	domain = get_domain(email)
+	if domain not in get_mail_domains(env, users_only=True):
+		remove_domain(domain, env)
 
 	# Update things in case any domains are removed.
 	return kick(env, "mail user removed")
@@ -360,7 +366,7 @@ def parse_privs(value):
 
 def get_mail_user_privileges(email, env, empty_on_error=False):
 	# get privs
-	c = open_database(env)
+	c = utils.open_database(env)
 	c.execute('SELECT privileges FROM users WHERE email=?', (email,))
 	rows = c.fetchall()
 	if len(rows) != 1:
@@ -392,7 +398,7 @@ def add_remove_mail_user_privilege(email, priv, action, env):
 		return ("Invalid action.", 400)
 
 	# commit to database
-	conn, c = open_database(env, with_connection=True)
+	conn, c = utils.open_database(env, with_connection=True)
 	c.execute("UPDATE users SET privileges=? WHERE email=?", ("\n".join(privs), email))
 	if c.rowcount != 1:
 		return ("Something went wrong.", 400)
@@ -475,7 +481,7 @@ def add_mail_alias(address, forwards_to, permitted_senders, env, update_if_exist
 
 	permitted_senders = None if len(validated_permitted_senders) == 0 else ",".join(validated_permitted_senders)
 
-	conn, c = open_database(env, with_connection=True)
+	conn, c = utils.open_database(env, with_connection=True)
 	try:
 		c.execute("INSERT INTO aliases (source, destination, permitted_senders) VALUES (?, ?, ?)", (address, forwards_to, permitted_senders))
 		return_status = "alias added"
@@ -498,7 +504,7 @@ def remove_mail_alias(address, env, do_kick=True):
 	address = sanitize_idn_email_address(address)
 
 	# remove
-	conn, c = open_database(env, with_connection=True)
+	conn, c = utils.open_database(env, with_connection=True)
 	c.execute("DELETE FROM aliases WHERE source=?", (address,))
 	if c.rowcount != 1:
 		return ("That's not an alias (%s)." % address, 400)
@@ -510,7 +516,7 @@ def remove_mail_alias(address, env, do_kick=True):
 	return None
 
 def add_auto_aliases(aliases, env):
-	conn, c = open_database(env, with_connection=True)
+	conn, c = utils.open_database(env, with_connection=True)
 	c.execute("DELETE FROM auto_aliases")
 	for source, destination in aliases.items():
 		c.execute("INSERT INTO auto_aliases (source, destination) VALUES (?, ?)", (source, destination))

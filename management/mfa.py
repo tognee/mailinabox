@@ -5,7 +5,7 @@ import os
 import pyotp
 import qrcode
 
-from mailconfig import open_database
+from utils import open_database
 
 def get_user_id(email, c):
 	c.execute('SELECT id FROM users WHERE email=?', (email,))

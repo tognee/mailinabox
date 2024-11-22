@@ -1,4 +1,5 @@
 import os.path
+import sqlite3
 
 # DO NOT import non-standard modules. This module is imported by
 # migrate.py which runs on fresh machines before anything is installed
@@ -207,6 +208,13 @@ def get_ssh_config_value(parameter_name):
 
 	# Did not find the parameter!
 	return None
+
+def open_database(env, with_connection=False):
+	conn = sqlite3.connect(env["STORAGE_ROOT"] + "/mail/users.sqlite")
+	if not with_connection:
+		return conn.cursor()
+	else:
+		return conn, conn.cursor()
 
 if __name__ == "__main__":
 	from web_update import get_web_domains
