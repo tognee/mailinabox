@@ -3,6 +3,7 @@
 import sqlite3, re
 import utils
 from publicsuffixlist import PublicSuffixList
+from mail_update import kick
 
 # TODO: Add support for updated list
 psl = PublicSuffixList()
@@ -25,14 +26,18 @@ def get_domain_id(c, domain):
 	# This is purly a database helper, should
 	# be used only with a db context
 	c.execute("SELECT id FROM domains WHERE domain=?", (domain,))
-	if c.rowcount != 1:
+	domain_id = c.fetchone()
+	if domain_id is None:
 		return None
-	return c.fetchone()[0]
+	return domain_id[0]
 
-def get_domains(env):
+def get_domains(env, users_only=False):
 	# Returns a flat, sorted list of all domain names.
 	c = utils.open_database(env)
-	c.execute('SELECT domain FROM domains')
+	query = 'SELECT domain FROM domains'
+	if users_only:
+		query += ' WHERE id IN (SELECT domain_id FROM users)'
+	c.execute(query)
 	domains = [ row[0] for row in c.fetchall() ]
 	return utils.sort_domains(domains, env)
 
@@ -49,12 +54,15 @@ def get_domains_ex(env):
 	# ]
 	domains = []
 	c = utils.open_database(env)
-	c.execute('SELECT id, domain, options FROM domains')
-	for id, domain, options in c.fetchall():
+	c.execute('SELECT id, domain, options, (SELECT COUNT(*) FROM users WHERE domain_id=id) as user_count, (SELECT COUNT(*) FROM aliases WHERE source_domain_id=id) as alias_count, (SELECT COUNT(*) FROM auto_aliases WHERE source_domain_id=id) as auto_alias_count FROM domains')
+	for id, domain, options, user_count, alias_count, auto_alias_count in c.fetchall():
 		domains.append({
 			"id": id,
 			"domain": domain,
-			"options": parse_options(options)
+			"options": parse_options(options),
+			"user_count": user_count,
+			"alias_count": alias_count,
+			"auto_alias_count": auto_alias_count
 		})
 
 	return domains
@@ -164,18 +172,3 @@ def set_domain_option(domain, option, value: bool, env):
 	conn.commit()
 
 	return kick(env, "OK")
-
-def kick(env, action_result=None):
-	# Update DNS and nginx in case any domains are added/removed.
-	results = []
-
-	if action_result is not None:
-		results.append(action_result + "\n")
-
-	from dns_update import do_dns_update
-	results.append( do_dns_update(env) )
-
-	from web_update import do_web_update
-	results.append( do_web_update(env) )
-
-	return "".join(s for s in results if s != "")

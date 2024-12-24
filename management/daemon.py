@@ -21,7 +21,7 @@ import auth, utils
 from mail_users import get_mail_users, get_mail_users_ex, get_admins, add_mail_user, set_mail_password, remove_mail_user
 from mail_users import get_mail_user_privileges, add_remove_mail_user_privilege
 from mail_aliases import get_mail_aliases, get_mail_aliases_ex, add_mail_alias, remove_mail_alias
-from mail_domains import get_domains
+from mail_domains import get_domains, add_domain, remove_domain
 from mfa import get_public_mfa_state, provision_totp, validate_totp_secret, enable_mfa, disable_mfa
 import contextlib
 
@@ -257,6 +257,16 @@ def mail_aliases_remove():
 @authorized_personnel_only
 def mail_domains():
     return "".join(x+"\n" for x in get_domains(env))
+
+@app.route('/mail/domains/add', methods=['POST'])
+@authorized_personnel_only
+def mail_domains_add():
+	return add_domain(request.form.get('domain', ''), request.form.get('options', ''), env)
+
+@app.route('/mail/domains/remove', methods=['POST'])
+@authorized_personnel_only
+def mail_domains_remove():
+	return remove_domain(request.form.get('domain', ''), env)
 
 # DNS
 

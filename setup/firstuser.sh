@@ -47,6 +47,21 @@ if [ -z "$(management/cli.py user)" ]; then
 		echo "have access to the box's control panel."
 	fi
 
+    KNOWN_DOMAINS=$(management/cli.py domain)
+
+    if ! echo "$KNOWN_DOMAINS" | grep -q "^$BOX_HOSTNAME$"; then
+        management/cli.py domain add "$BOX_HOSTNAME" > /dev/null
+        KNOWN_DOMAINS="$KNOWN_DOMAINS
+$BOX_HOSTNAME"
+    fi
+
+    EMAIL_DOMAIN="${EMAIL_ADDR#*@}"
+    if ! echo "$KNOWN_DOMAINS" | grep -q "^$EMAIL_DOMAIN$"; then
+        management/cli.py domain add "$EMAIL_DOMAIN" > /dev/null
+        KNOWN_DOMAINS="$KNOWN_DOMAINS
+$EMAIL_DOMAIN"
+    fi
+
 	# Create the user's mail account. This will ask for a password if none was given above.
 	management/cli.py user add "$EMAIL_ADDR" ${EMAIL_PW:+"$EMAIL_PW"}
 

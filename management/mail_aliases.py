@@ -9,11 +9,13 @@ from mail_utils import (
     is_dcv_address,
 )
 from mail_users import get_mail_users, get_mail_user_privileges
+from mail_domains import get_domain_id
+from mail_update import kick
 
 def get_mail_aliases(env):
 	# Returns a sorted list of tuples of (address, forward-tos, permitted-senders, auto).
 	c = utils.open_database(env)
-	c.execute('SELECT source, destination, permitted_senders, 0 as auto FROM aliases UNION SELECT source, destination, permitted_senders, 1 as auto FROM auto_aliases')
+	c.execute('SELECT (source_name || "@" || domain) as source, destination, permitted_senders, 0 as auto FROM aliases JOIN domains ON domains.id = source_domain_id UNION SELECT (source_name || "@" || domain) as source, destination, permitted_senders, 1 as auto FROM auto_aliases JOIN domains ON domains.id = source_domain_id;')
 	aliases = { row[0]: row for row in c.fetchall() } # make dict
 
 	# put in a canonical order: sort by domain, then by email address lexicographically
@@ -147,14 +149,21 @@ def add_mail_alias(address, forwards_to, permitted_senders, env, update_if_exist
 	permitted_senders = None if len(validated_permitted_senders) == 0 else ",".join(validated_permitted_senders)
 
 	conn, c = utils.open_database(env, with_connection=True)
+
+	source_name, domain = address.split("@", 1)
+	# get domain id
+	domain_id = get_domain_id(c, domain)
+	if domain_id is None:
+		return ("That's not a domain (%s)." % domain, 400)
+
 	try:
-		c.execute("INSERT INTO aliases (source, destination, permitted_senders) VALUES (?, ?, ?)", (address, forwards_to, permitted_senders))
+		c.execute("INSERT INTO aliases (source_name, source_domain_id, destination, permitted_senders) VALUES (?, ?, ?, ?)", (source_name, domain_id, forwards_to, permitted_senders))
 		return_status = "alias added"
 	except sqlite3.IntegrityError:
 		if not update_if_exists:
 			return ("Alias already exists (%s)." % address, 400)
 		else:
-			c.execute("UPDATE aliases SET destination = ?, permitted_senders = ? WHERE source = ?", (forwards_to, permitted_senders, address))
+			c.execute("UPDATE aliases SET destination = ?, permitted_senders = ? WHERE source_name = ? AND source_domain_id = ?", (forwards_to, permitted_senders, source_name, domain_id))
 			return_status = "alias updated"
 
 	conn.commit()
@@ -170,7 +179,14 @@ def remove_mail_alias(address, env, do_kick=True):
 
 	# remove
 	conn, c = utils.open_database(env, with_connection=True)
-	c.execute("DELETE FROM aliases WHERE source=?", (address,))
+
+	source_name, domain = address.split("@", 1)
+	# get domain id
+	domain_id = get_domain_id(c, domain)
+	if domain_id is None:
+		return ("That's not a domain (%s)." % domain, 400)
+
+	c.execute("DELETE FROM aliases WHERE source_name=? AND source_domain_id=?", (address, domain_id))
 	if c.rowcount != 1:
 		return ("That's not an alias (%s)." % address, 400)
 	conn.commit()
@@ -181,10 +197,19 @@ def remove_mail_alias(address, env, do_kick=True):
 	return None
 
 def add_auto_aliases(aliases, env):
+	domains_map = {}
 	conn, c = utils.open_database(env, with_connection=True)
 	c.execute("DELETE FROM auto_aliases")
-	for source, destination in aliases.items():
-		c.execute("INSERT INTO auto_aliases (source, destination) VALUES (?, ?)", (source, destination))
+	for address, destination in aliases.items():
+		source_name, domain = address.split("@", 1)
+
+		# get domain id
+		if domain not in domains_map:
+			domains_map[domain] = get_domain_id(c, domain)
+		if domains_map[domain] is None:
+			return ("That's not a domain (%s)." % domain, 400)
+
+		c.execute("INSERT INTO auto_aliases (source_name, source_domain_id, destination) VALUES (?, ?, ?)", (source_name, domains_map[domain], destination))
 	conn.commit()
 
 def get_system_administrator(env):
@@ -202,13 +227,10 @@ def get_required_aliases(env):
 
 	# Get a list of domains we serve mail for, except ones for which the only
 	# email on that domain are the required aliases or a catch-all/domain-forwarder.
-	real_mail_domains = get_mail_domains(env,
-		filter_aliases = lambda alias :
-			not alias.startswith("postmaster@")
-			and not alias.startswith("admin@")
-			and not alias.startswith("abuse@")
-			and not alias.startswith("@")
-			)
+	c = utils.open_database(env)
+	query = "SELECT domain FROM domains WHERE id IN (SELECT domain_id FROM users) OR id IN (SELECT source_domain_id FROM aliases WHERE source_name NOT IN ('', 'postmaster', 'admin', 'abuse'));"
+	c.execute(query)
+	real_mail_domains = [ row[0] for row in c.fetchall() ]
 
 	# Create postmaster@, admin@ and abuse@ for all domains we serve
 	# mail on. postmaster@ is assumed to exist by our Postfix configuration.

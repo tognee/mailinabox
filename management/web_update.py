@@ -76,7 +76,7 @@ def get_domains_with_a_records(env):
 def get_domains_who_dont_want_web(env):
 	domains = set()
 	for domain_entry in get_domains_ex(env):
-		if not domain_entry["options"]["web"]:
+		if not domain_entry["options"]["web"] and domain_entry['domain'] != env['BOX_HOSTNAME']:
 			domains.add(domain_entry['domain'])
 	return domains
 

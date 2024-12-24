@@ -1,37 +1,19 @@
 #!/usr/local/lib/mailinabox/env/bin/python
 
-# NOTE:
-# This script is run both using the system-wide Python 3
-# interpreter (/usr/bin/python3) as well as through the
-# virtualenv (/usr/local/lib/mailinabox/env). So only
-# import packages at the top level of this script that
-# are installed in *both* contexts. We use the system-wide
-# Python 3 in setup/questions.sh to validate the email
-# address entered by the user.
-
-import os, sqlite3, re
-import utils
-from email_validator import validate_email as validate_email_, EmailNotValidError
-import idna
-from domains import get_domain_id
-
-
-# def get_mail_domains(env, filter_aliases=lambda alias : True, users_only=False):
-# 	# Returns the domain names (IDNA-encoded) of all of the email addresses
-# 	# configured on the system. If users_only is True, only return domains
-# 	# with email addresses that correspond to user accounts. Exclude Unicode
-# 	# forms of domain names listed in the automatic aliases table.
-# 	domains = []
-# 	domains.extend([get_domain(login, as_unicode=False) for login in get_mail_users(env)])
-# 	if not users_only:
-# 		domains.extend([get_domain(address, as_unicode=False) for address, _, _, auto in get_mail_aliases(env) if filter_aliases(address) and not auto ])
-# 	return set(domains)
-
 def kick(env, mail_result=None):
+	import idna
+
+	from mail_aliases import (
+		get_system_administrator,
+		get_required_aliases,
+		add_auto_aliases,
+		get_mail_aliases,
+		remove_mail_alias
+	)
+	from mail_domains import get_domains
 	results = []
 
 	# Include the current operation's result in output.
-
 	if mail_result is not None:
 		results.append(mail_result + "\n")
 
@@ -45,7 +27,7 @@ def kick(env, mail_result=None):
 		auto_aliases[alias] = administrator
 
 	# Add domain maps from Unicode forms of IDNA domains to the ASCII forms stored in the alias table.
-	for domain in get_mail_domains(env):
+	for domain in get_domains(env):
 		try:
 			domain_unicode = idna.decode(domain.encode("ascii"))
 			if domain == domain_unicode: continue # not an IDNA/Unicode domain
@@ -67,7 +49,6 @@ def kick(env, mail_result=None):
 			results.append(f"removed alias {address} (was to {forwards_to}; domain no longer used for email)\n")
 
 	# Update DNS and nginx in case any domains are added/removed.
-
 	from dns_update import do_dns_update
 	results.append( do_dns_update(env) )
 
@@ -75,7 +56,6 @@ def kick(env, mail_result=None):
 	results.append( do_web_update(env) )
 
 	return "".join(s for s in results if s != "")
-
 
 if __name__ == "__main__":
 	import sys

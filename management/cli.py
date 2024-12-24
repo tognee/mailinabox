@@ -138,6 +138,15 @@ elif sys.argv[1] == "alias" and sys.argv[2] == "add" and len(sys.argv) == 5:
 elif sys.argv[1] == "alias" and sys.argv[2] == "remove" and len(sys.argv) == 4:
 	print(mgmt("/mail/aliases/remove", { "address": sys.argv[3] }))
 
+elif sys.argv[1] == "domain" and len(sys.argv) == 2:
+	print(mgmt("/mail/domains"))
+
+elif sys.argv[1] == "domain" and sys.argv[2] == "add" and len(sys.argv) == 4:
+	print(mgmt("/mail/domains/add", { "domain": sys.argv[3] }))
+
+elif sys.argv[1] == "domain" and sys.argv[2] == "remove" and len(sys.argv) == 4:
+	print(mgmt("/mail/domains/remove", { "domain": sys.argv[3] }))
+
 else:
 	print("Invalid command-line arguments.")
 	sys.exit(1)

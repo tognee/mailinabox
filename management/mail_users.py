@@ -3,11 +3,12 @@ import os
 import utils
 from mail_utils import validate_email, is_dcv_address
 from mail_domains import get_domain_id
+from mail_update import kick
 
 def get_mail_users(env):
 	# Returns a flat, sorted list of all user accounts.
 	c = utils.open_database(env)
-	c.execute("SELECT username || '@' || domains.domain FROM users JOIN domains ON domains.id = users.domain_id")
+	c.execute("SELECT (username || '@' || domain) as email FROM users JOIN domains ON domains.id = domain_id")
 	users = [ row[0] for row in c.fetchall() ]
 	return utils.sort_email_addresses(users, env)
 

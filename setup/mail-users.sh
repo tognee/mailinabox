@@ -22,9 +22,9 @@ if [ ! -f "$db_path" ]; then
 	echo "Creating new user database: $db_path";
 	echo "CREATE TABLE domains (id INTEGER PRIMARY KEY AUTOINCREMENT, domain TEXT NOT NULL UNIQUE, options TEXT NOT NULL DEFAULT ''); " | sqlite3 "$db_path";
     echo "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, domain_id INTEGER NOT NULL, password TEXT NOT NULL, extra, privileges TEXT NOT NULL DEFAULT '', UNIQUE (username, domain_id));" | sqlite3 "$db_path";
-    echo "CREATE TABLE aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL UNIQUE, destination TEXT NOT NULL, permitted_senders TEXT);" | sqlite3 "$db_path";
     echo "CREATE TABLE mfa (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, type TEXT NOT NULL, secret TEXT NOT NULL, mru_token TEXT, label TEXT, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);" | sqlite3 "$db_path";
-    echo "CREATE TABLE auto_aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL UNIQUE, destination TEXT NOT NULL, permitted_senders TEXT);" | sqlite3 "$db_path";
+    echo "CREATE TABLE aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, source_name TEXT NOT NULL, source_domain_id INTEGER NOT NULL, destination TEXT NOT NULL, permitted_senders TEXT, UNIQUE (source_name, source_domain_id));" | sqlite3 "$db_path";
+    echo "CREATE TABLE auto_aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, source_name TEXT NOT NULL, source_domain_id INTEGER NOT NULL, destination TEXT NOT NULL, permitted_senders TEXT, UNIQUE (source_name, source_domain_id));" | sqlite3 "$db_path";
 fi
 
 # ### User Authentication
@@ -51,9 +51,9 @@ cat > /etc/dovecot/dovecot-sql.conf.ext << EOF;
 driver = sqlite
 connect = $db_path
 default_pass_scheme = SHA512-CRYPT
-password_query = SELECT (username || '@' || domains.domain) as user, password FROM users JOIN domains ON domains.id = users.domain_id WHERE email='%u';
-user_query = SELECT (username || '@' || domains.domain) AS user, "mail" as uid, "mail" as gid, "$STORAGE_ROOT/mail/mailboxes/%d/%n" as home FROM users JOIN domains ON domains.id = users.domain_id WHERE email='%u';
-iterate_query = SELECT (username || '@' || domains.domain) AS user FROM users JOIN domains ON domains.id = users.domain_id;
+password_query = SELECT (username || '@' || domain) as user, password FROM users JOIN domains ON domains.id = domain_id WHERE email='%u';
+user_query = SELECT (username || '@' || domain) AS user, "mail" as uid, "mail" as gid, "$STORAGE_ROOT/mail/mailboxes/%d/%n" as home FROM users JOIN domains ON domains.id = domain_id WHERE email='%u';
+iterate_query = SELECT (username || '@' || domain) AS user FROM users JOIN domains ON domains.id = domain_id;
 EOF
 chmod 0600 /etc/dovecot/dovecot-sql.conf.ext # per Dovecot instructions
 
@@ -96,7 +96,7 @@ tools/editconf.py /etc/postfix/main.cf \
 # take the value from the destination column.
 cat > /etc/postfix/sender-login-maps.cf << EOF;
 dbpath=$db_path
-query = SELECT permitted_senders FROM (SELECT permitted_senders, 0 AS priority FROM aliases WHERE source='%s' AND permitted_senders IS NOT NULL UNION SELECT destination AS permitted_senders, 1 AS priority FROM aliases WHERE source='%s' AND permitted_senders IS NULL UNION SELECT username || '@' || domains.domain as permitted_senders, 2 AS priority FROM users JOIN domains ON domains.id = users.domain_id WHERE email='%s') ORDER BY priority LIMIT 1;
+query = SELECT permitted_senders FROM (SELECT permitted_senders, 0 AS priority, (source_name || '@' || domain) as source FROM aliases JOIN domains ON domains.id = source_domain_id WHERE source='%s' AND permitted_senders IS NOT NULL UNION SELECT destination AS permitted_senders, 1 AS priority, (source_name || '@' || domain) as source FROM aliases JOIN domains ON domains.id = source_domain_id WHERE source='%s' AND permitted_senders IS NULL UNION SELECT (username || '@' || domain) as permitted_senders, 2 AS priority FROM users JOIN domains ON domains.id = domain_id WHERE permitted_senders='%s') ORDER BY priority LIMIT 1;
 EOF
 
 # ### Destination Validation
@@ -116,13 +116,13 @@ tools/editconf.py /etc/postfix/main.cf \
 # SQL statement to check if we handle incoming mail for a domain, either for users or aliases.
 cat > /etc/postfix/virtual-mailbox-domains.cf << EOF;
 dbpath=$db_path
-query = SELECT users.*, username || '@' || domains.domain AS email FROM users JOIN domains ON domains.id = users.domain_id WHERE email LIKE '%%@%s' UNION SELECT 1 FROM aliases WHERE source LIKE '%%@%s' UNION SELECT 1 FROM auto_aliases WHERE source LIKE '%%@%s'
+query = SELECT users.*, (username || '@' || domain) AS email FROM users JOIN domains ON domains.id = domain_id WHERE email LIKE '%%@%s' UNION SELECT 1, (source_name || '@' || domain) as source FROM aliases JOIN domains ON domains.id = source_domain_id WHERE source LIKE '%%@%s' UNION SELECT 1, (source_name || '@' || domain) as source FROM auto_aliases JOIN domains ON domains.id = source_domain_id WHERE source LIKE '%%@%s'
 EOF
 
 # SQL statement to check if we handle incoming mail for a user.
 cat > /etc/postfix/virtual-mailbox-maps.cf << EOF;
 dbpath=$db_path
-query = SELECT users.*, username || '@' || domains.domain AS email FROM users JOIN domains ON domains.id = users.domain_id WHERE email='%s'
+query = SELECT users.*, (username || '@' || domain) AS email FROM users JOIN domains ON domains.id = domain_id WHERE email='%s'
 EOF
 
 # SQL statement to rewrite an email address if an alias is present.
@@ -151,7 +151,7 @@ EOF
 # empty destination here so that other lower priority rules might match.
 cat > /etc/postfix/virtual-alias-maps.cf << EOF;
 dbpath=$db_path
-query = SELECT destination from (SELECT destination, 0 as priority FROM aliases WHERE source='%s' AND destination<>'' UNION SELECT username || '@' || domains.domain AS email as destination, 1 as priority FROM users JOIN domains ON domains.id = users.domain_id WHERE email='%s' UNION SELECT destination, 2 as priority FROM auto_aliases WHERE source='%s' AND destination<>'') ORDER BY priority LIMIT 1;
+query = SELECT destination from (SELECT destination, 0 as priority, (source_name || '@' || domain) as source FROM aliases JOIN domains ON domains.id = source_domain_id WHERE source='%s' AND destination<>'' UNION SELECT (username || '@' || domain) as destination, 1 as priority FROM users JOIN domains ON domains.id = domain_id WHERE destination='%s' UNION SELECT destination, 2 as priority, (source_name || '@' || domain) as source FROM auto_aliases JOIN domains ON domains.id = source_domain_id WHERE source='%s' AND destination<>'') ORDER BY priority LIMIT 1;
 EOF
 
 # Restart Services
