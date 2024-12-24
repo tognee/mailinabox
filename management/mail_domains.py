@@ -4,6 +4,7 @@ import sqlite3, re
 import utils
 from publicsuffixlist import PublicSuffixList
 from mail_update import kick
+import idna
 
 # TODO: Add support for updated list
 psl = PublicSuffixList()
@@ -16,6 +17,18 @@ POSSIBLE_OPTIONS = [
 	"web", # Serving web and checking A/AAAA records for @ and www.
 ]
 
+def sanitize_idn(domain):
+	try:
+		return idna.encode(domain, uts46=True).decode('ascii')
+	except idna.IDNAError:
+		return domain
+
+def prettify_idn(domain):
+	try:
+		return idna.decode(domain.encode('ascii'))
+	except idna.IDNAError:
+		return domain
+
 def validate_domain(domain):
 	# Check for valid domain
 	has_valid_chars = re.match(r"[a-zA-Z0-9\-\.]+", domain)
@@ -25,20 +38,25 @@ def validate_domain(domain):
 def get_domain_id(c, domain):
 	# This is purly a database helper, should
 	# be used only with a db context
+
+	# Make sure the domain is idn safe
+	domain = sanitize_idn(domain)
+
+	# Get the domain id
 	c.execute("SELECT id FROM domains WHERE domain=?", (domain,))
 	domain_id = c.fetchone()
 	if domain_id is None:
 		return None
 	return domain_id[0]
 
-def get_domains(env, users_only=False):
+def get_domains(env, users_only=False, prettify=False):
 	# Returns a flat, sorted list of all domain names.
 	c = utils.open_database(env)
 	query = 'SELECT domain FROM domains'
 	if users_only:
 		query += ' WHERE id IN (SELECT domain_id FROM users)'
 	c.execute(query)
-	domains = [ row[0] for row in c.fetchall() ]
+	domains = [ prettify_idn(row[0]) if prettify else row[0] for row in c.fetchall() ]
 	return utils.sort_domains(domains, env)
 
 def get_domains_ex(env):
@@ -47,9 +65,13 @@ def get_domains_ex(env):
 	#   {
 	#     "id": 1,
 	#     "domain": "example.com",
+	#     "prettified": "example.com",
 	#     "options": {
 	#       "web": True,
-	#     }
+	#     },
+	#     "user_count": 1
+	#     "alias_count": 1
+	#     "auto_alias_count": 1
 	#   },
 	# ]
 	domains = []
@@ -59,6 +81,7 @@ def get_domains_ex(env):
 		domains.append({
 			"id": id,
 			"domain": domain,
+			"prettified": prettify_idn(domain),
 			"options": parse_options(options),
 			"user_count": user_count,
 			"alias_count": alias_count,
@@ -81,6 +104,7 @@ def encode_options(options):
 def add_domain(domain, options, env):
 	if domain.strip() == "":
 		return ("No domain provided.", 400)
+	domain = sanitize_idn(domain)
 	if not validate_domain(domain):
 		return ("That's not a valid domain (%s)." % domain, 400)
 
@@ -109,6 +133,7 @@ def add_domain(domain, options, env):
 def remove_domain(domain, env):
 	# get the database
 	conn, c = utils.open_database(env, with_connection=True)
+	domain = sanitize_idn(domain)
 
 	# get the domain id from the database
 	c.execute("SELECT id FROM domains WHERE domain=?", (domain,))
@@ -128,6 +153,7 @@ def remove_domain(domain, env):
 	return kick(env)
 
 def get_domain_options(domain, env):
+	domain = sanitize_idn(domain)
 	c = utils.open_database(env)
 	c.execute('SELECT options FROM domains WHERE domain=?', (domain,))
 	rows = c.fetchall()
@@ -136,6 +162,7 @@ def get_domain_options(domain, env):
 	return parse_options(rows[0][0])
 
 def update_domain(domain, options, env):
+	domain = sanitize_idn(domain)
 	if options is None or options.strip() == "":
 		options = []
 	else:
@@ -155,6 +182,7 @@ def update_domain(domain, options, env):
 	return kick(env, "OK")
 
 def set_domain_option(domain, option, value: bool, env):
+	domain = sanitize_idn(domain)
 	if option not in POSSIBLE_OPTIONS:
 		return ("That's not a valid option (%s)." % option, 400)
 
