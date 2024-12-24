@@ -11,7 +11,6 @@ import dns.resolver
 
 from utils import shell, load_env_vars_from_file, safe_domain_name, sort_domains, get_ssh_port
 from ssl_certificates import get_ssl_certificates, check_certificate
-import contextlib
 
 # From https://stackoverflow.com/questions/3026957/how-to-validate-a-domain-name-using-regex-php/16491074#16491074
 # This regular expression matches domain names according to RFCs, it also accepts fqdn with an leading dot,
@@ -23,10 +22,10 @@ def get_dns_domains(env):
 	# Add all domain names in use by email users and mail aliases, any
 	# domains we serve web for (except www redirects because that would
 	# lead to infinite recursion here) and ensure BOX_HOSTNAME is in the list.
-	from mailconfig import get_mail_domains
+	from mail_domains import get_domains
 	from web_update import get_web_domains
 	domains = set()
-	domains |= set(get_mail_domains(env))
+	domains |= set(get_domains(env))
 	domains |= set(get_web_domains(env, include_www_redirects=False))
 	domains.add(env['BOX_HOSTNAME'])
 	return domains
@@ -109,8 +108,8 @@ def do_dns_update(env, force=False):
 			shell('check_call', ["/usr/sbin/service", "nsd", "restart"])
 
 	# Write the OpenDKIM configuration tables for all of the mail domains.
-	from mailconfig import get_mail_domains
-	if write_opendkim_tables(get_mail_domains(env), env):
+	from mail_domains import get_domains
+	if write_opendkim_tables(get_domains(env), env):
 		# Settings changed. Kick opendkim.
 		shell('check_call', ["/usr/sbin/service", "opendkim", "restart"])
 		if len(updated_domains) == 0:
@@ -136,10 +135,11 @@ def build_zones(env):
 
 	# Create a dictionary of domains to a set of attributes for each
 	# domain, such as whether there are mail users at the domain.
-	from mailconfig import get_mail_domains
+	# from mailconfig import get_mail_domains
+	from mail_domains import get_domains
 	from web_update import get_web_domains
-	mail_domains = set(get_mail_domains(env))
-	mail_user_domains = set(get_mail_domains(env, users_only=True)) # i.e. will log in for mail, Nextcloud
+	mail_domains = set(get_domains(env)) # any email (even aliases)
+	mail_user_domains = set(get_domains(env)) # i.e. will log in for mail, Nextcloud
 	web_domains = set(get_web_domains(env))
 	auto_domains = web_domains - set(get_web_domains(env, include_auto=False))
 	domains |= auto_domains # www redirects not included in the initial list, see above

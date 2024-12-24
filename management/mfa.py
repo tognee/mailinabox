@@ -8,7 +8,7 @@ import qrcode
 from utils import open_database
 
 def get_user_id(email, c):
-	c.execute('SELECT id FROM users WHERE email=?', (email,))
+	c.execute("SELECT id, username || '@' || domains.domain as email FROM users JOIN domains ON domains.id = users.domain_id WHERE email=?", (email,))
 	r = c.fetchone()
 	if not r: raise ValueError("User does not exist.")
 	return r[0]

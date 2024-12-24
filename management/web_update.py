@@ -1,43 +1,60 @@
 # Creates an nginx configuration file so we serve HTTP/HTTPS on all
-# domains for which a mail account has been set up.
+# domains registered on this box.
 ########################################################################
 
 import os.path, re, rtyaml
 
-from mailconfig import get_mail_domains
-from dns_update import get_custom_dns_config, get_dns_zones
+from mail_domains import get_domains_ex
+from dns_update import get_custom_dns_config
 from ssl_certificates import get_ssl_certificates, get_domain_ssl_files, check_certificate
 from utils import shell, safe_domain_name, sort_domains
+from publicsuffixlist import PublicSuffixList
+
+# TODO: Add support for updated list
+psl = PublicSuffixList()
 
 def get_web_domains(env, include_www_redirects=True, include_auto=True, exclude_dns_elsewhere=True):
 	# What domains should we serve HTTP(S) for?
 	domains = set()
+	dont_want_web = set()
 
-	# Serve web for all mail domains so that we might at least
-	# provide auto-discover of email settings, and also a static website
-	# if the user wants to make one.
-	domains |= get_mail_domains(env)
+	registered_domains = get_domains_ex(env)
+	for domain_entry in registered_domains:
 
-	if include_www_redirects and include_auto:
-		# Add 'www.' subdomains that we want to provide default redirects
-		# to the main domain for. We'll add 'www.' to any DNS zones, i.e.
-		# the topmost of each domain we serve.
-		domains |= {'www.' + zone for zone, zonefile in get_dns_zones(env)}
+		# Serve web for all mail domains so that we might at least
+		# provide auto-discover of email settings, and also a static website
+		# if the user wants to make one.
+		domains.add(domain_entry['domain'])
 
-	if include_auto:
-		# Add Autoconfiguration domains for domains that there are user accounts at:
-		# 'autoconfig.' for Mozilla Thunderbird auto setup.
-		# 'autodiscover.' for ActiveSync autodiscovery (Z-Push).
-		domains |= {'autoconfig.' + maildomain for maildomain in get_mail_domains(env, users_only=True)}
-		domains |= {'autodiscover.' + maildomain for maildomain in get_mail_domains(env, users_only=True)}
+		wants_web = domain_entry["options"]["web"]
+		if not wants_web:
+			dont_want_web.add(domain_entry['domain'])
 
-		# 'mta-sts.' for MTA-STS support for all domains that have email addresses.
-		domains |= {'mta-sts.' + maildomain for maildomain in get_mail_domains(env)}
+		# We don't want to add 'www.' for subdomains like 'office.example.co.uk'
+		is_not_subdomain = psl.subdomain(domain_entry['domain'], depth=0) == domain_entry['domain']
+
+		if is_not_subdomain and wants_web and include_www_redirects and include_auto:
+			# Add 'www.' subdomains that we want to provide default redirects
+			# to the main domain for. We'll add 'www.' to any DNS zones, i.e.
+			# the topmost of each domain we serve.
+			domains.add('www.' + domain_entry['domain'])
+
+		if include_auto:
+			# Add Autoconfiguration domains for domains that there are user accounts at:
+			# 'autoconfig.' for Mozilla Thunderbird auto setup.
+			# 'autodiscover.' for ActiveSync autodiscovery (Z-Push).
+			domains.add('autoconfig.' + domain_entry['domain'])
+			domains.add('autodiscover.' + domain_entry['domain'])
+
+			# 'mta-sts.' for MTA-STS support for all domains that have email addresses.
+			domains.add('mta-sts.' + domain_entry['domain'])
 
 	if exclude_dns_elsewhere:
 		# ...Unless the domain has an A/AAAA record that maps it to a different
 		# IP address than this box. Remove those domains from our list.
 		domains -= get_domains_with_a_records(env)
+		# Or it doesn't want a webserver on the box
+		domains -= get_domains_who_dont_want_web(env)
 
 	# Ensure the BOX_HOSTNAME is in the list so we can serve webmail
 	# as well as Z-Push for Exchange ActiveSync. This can't be removed
@@ -54,6 +71,13 @@ def get_domains_with_a_records(env):
 	for domain, rtype, value in dns:
 		if rtype == "CNAME" or (rtype in {"A", "AAAA"} and value not in {"local", env['PUBLIC_IP']}):
 			domains.add(domain)
+	return domains
+
+def get_domains_who_dont_want_web(env):
+	domains = set()
+	for domain_entry in get_domains_ex(env):
+		if not domain_entry["options"]["web"]:
+			domains.add(domain_entry['domain'])
 	return domains
 
 def get_web_domains_with_root_overrides(env):

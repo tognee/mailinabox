@@ -18,9 +18,10 @@ from functools import wraps
 from flask import Flask, request, render_template, Response, send_from_directory, make_response
 
 import auth, utils
-from mailconfig import get_mail_users, get_mail_users_ex, get_admins, add_mail_user, set_mail_password, remove_mail_user
-from mailconfig import get_mail_user_privileges, add_remove_mail_user_privilege
-from mailconfig import get_mail_aliases, get_mail_aliases_ex, get_mail_domains, add_mail_alias, remove_mail_alias
+from mail_users import get_mail_users, get_mail_users_ex, get_admins, add_mail_user, set_mail_password, remove_mail_user
+from mail_users import get_mail_user_privileges, add_remove_mail_user_privilege
+from mail_aliases import get_mail_aliases, get_mail_aliases_ex, add_mail_alias, remove_mail_alias
+from mail_domains import get_domains
 from mfa import get_public_mfa_state, provision_totp, validate_totp_secret, enable_mfa, disable_mfa
 import contextlib
 
@@ -255,7 +256,7 @@ def mail_aliases_remove():
 @app.route('/mail/domains')
 @authorized_personnel_only
 def mail_domains():
-    return "".join(x+"\n" for x in get_mail_domains(env))
+    return "".join(x+"\n" for x in get_domains(env))
 
 # DNS
 

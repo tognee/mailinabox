@@ -14,3 +14,4 @@ psutil
 postfix-mta-sts-resolver
 b2sdk
 boto3
+publicsuffixlist

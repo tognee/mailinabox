@@ -15,7 +15,7 @@ import postfix_mta_sts_resolver.resolver
 from dns_update import get_dns_zones, build_tlsa_record, get_custom_dns_config, get_secondary_dns, get_custom_dns_records
 from web_update import get_web_domains, get_domains_with_a_records
 from ssl_certificates import get_ssl_certificates, get_domain_ssl_files, check_certificate
-from mailconfig import get_mail_domains, get_mail_aliases
+# from mailconfig import get_mail_domains, get_mail_aliases
 
 from utils import shell, sort_domains, load_env_vars_from_file, load_settings, get_ssh_port, get_ssh_config_value
 

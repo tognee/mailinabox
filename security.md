@@ -54,7 +54,7 @@ Additionally:
 
 ### Password Storage
 
-The passwords for mail users are stored on disk using the [SHA512-CRYPT](http://man7.org/linux/man-pages/man3/crypt.3.html) hashing scheme. ([source](management/mailconfig.py)) Password changes (as well as changes to control panel two-factor authentication settings) expire any control panel login sessions.
+The passwords for mail users are stored on disk using the [SHA512-CRYPT](http://man7.org/linux/man-pages/man3/crypt.3.html) hashing scheme. ([source](management/mail_users.py)) Password changes (as well as changes to control panel two-factor authentication settings) expire any control panel login sessions.
 
 ### Console access
 

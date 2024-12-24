@@ -1,5 +1,6 @@
 import os.path
 import sqlite3
+import subprocess
 
 # DO NOT import non-standard modules. This module is imported by
 # migrate.py which runs on fresh machines before anything is installed

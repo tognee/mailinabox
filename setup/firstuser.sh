@@ -18,7 +18,7 @@ if [ -z "$(management/cli.py user)" ]; then
 				# user hit ESC/cancel
 				exit
 			fi
-			while ! management/mailconfig.py validate-email "$EMAIL_ADDR"
+			while ! management/mail_utils.py validate-email "$EMAIL_ADDR"
 			do
 				input_box "Mail Account" \
 					"That's not a valid email address.
